@@ -1,19 +1,20 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { Observable, Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
-import { IGradeCalculator, GradeCalculator, NTermCalculator } from './gradecalculator';
+import { BehaviorSubject, Observable, pipe, Subject } from 'rxjs';
+import { debounceTime, tap, map } from 'rxjs/operators';
+import { IGradeCalculator, GradeCalculator, NTermCalculator } from '../gradecalculator';
 
 @Component({
   selector: 'app-root',
   standalone: true,
   imports: [CommonModule, RouterOutlet, FormsModule],
-  templateUrl: './app.component.html',
-  styleUrl: './app.component.css'
+  templateUrl: './grades.component.html',
+  styleUrl: './grades.component.css',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AppComponent {
+export class GradesComponent {
   maxScore = 50;
   standardization = "nterm";
   nterm = 1;
@@ -21,29 +22,27 @@ export class AppComponent {
   passScoreGoal = 60;
   showCorrect = true;
 
-  settings$ = new Subject<GradeSettings>();
+  private settings$ = new Subject<GradeSettings>();
   grades$: Observable<Grade[][]>;
+  private _isLoading = new BehaviorSubject(false);
+  isLoading$ = this._isLoading.asObservable();
 
   constructor(private router: Router, private activatedRoute: ActivatedRoute) {
     this.grades$ = this.settings$.pipe(
-      debounceTime(300),
-      map(AppComponent.calculateGrades),
-      map(g => AppComponent.sliceArray(g, 4))
+      tap(x => { this._isLoading.next(true) }),
+      debounceTime(500),
+      map(GradesComponent.calculateGrades),
+      map(g => GradesComponent.sliceArray(g, 4)),
+      tap(x => { this._isLoading.next(false); }),
     );
   }
 
   ngOnInit() {
-    
-  }
-
-  ngAfterViewInit() {
     this.standardization = this.activatedRoute.snapshot.queryParamMap.get("standardization") ?? "nterm";
     
     var maxScore = parseInt(this.activatedRoute.snapshot.queryParamMap.get("maxScore") ?? "");
     if (!isNaN(maxScore))
       this.maxScore = maxScore;
-
-    console.log(this.activatedRoute.snapshot.queryParamMap.get("maxScore"));
 
     var nterm = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("nterm") ?? "");
     if (!isNaN(nterm))
@@ -56,7 +55,9 @@ export class AppComponent {
     var passScoreGoal = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("passScoreGoal") ?? "");
     if (!isNaN(passScoreGoal))
       this.nterm = passScoreGoal;
+  }
 
+  ngAfterViewInit() {
     this.settings$.next({
       standardization: this.standardization,
       maxScore: this.maxScore,
@@ -82,7 +83,8 @@ export class AppComponent {
         maxScore: this.maxScore,
         nterm: this.standardization == "nterm" ? this.nterm : null,
         passGrade: this.standardization != "nterm" ? this.passGrade : null,
-        passScoreGoal: this.standardization != "nterm" ? this.passScoreGoal : null,       
+        passScoreGoal: this.standardization != "nterm" ? this.passScoreGoal : null,
+        showCorrect: this.showCorrect ? null : "no"     
       },
       replaceUrl: true      
     });
@@ -100,7 +102,7 @@ export class AppComponent {
   }
 
   private static calculateGrades(settings: GradeSettings): Grade[] {
-    var calculator = AppComponent.getCalculator(settings);
+    var calculator = GradesComponent.getCalculator(settings);
     
     var s = [... Array(settings.maxScore+1).keys()]
       .reverse()
