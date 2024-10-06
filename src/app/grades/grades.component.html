@@ -75,7 +75,7 @@
         </thead>
         <tbody>
         @for(grade of gradeList; track grade) {
-            <tr [class.table-secondary]="showCorrect ? grade.score % 10 == 0 : grade.errors % 10 == 0">
+            <tr [class.fw-bold]="showCorrect ? grade.score % 10 == 0 : grade.errors % 10 == 0">
             @if(showCorrect) {  <td class="text-end">{{grade.score}}</td> }
             @else { <td class="text-end">{{grade.errors}}</td> }
             <td>{{grade.grade | number: '1.1-1' }}</td>
