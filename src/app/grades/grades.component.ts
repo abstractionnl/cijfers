@@ -21,6 +21,7 @@ export class GradesComponent {
   passGrade = 6;
   passScoreGoal = 60;
   showCorrect = true;
+  showErrors = false;
 
   private settings$ = new Subject<GradeSettings>();
   grades$: Observable<Grade[][]>;
@@ -55,6 +56,21 @@ export class GradesComponent {
     var passScoreGoal = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("passScoreGoal") ?? "");
     if (!isNaN(passScoreGoal))
       this.nterm = passScoreGoal;
+
+    var show = this.activatedRoute.snapshot.queryParamMap.get("show");
+    switch (show) {
+      case "errors":
+        this.showErrors = true;
+        this.showCorrect = false;
+        break;
+      case "both":
+        this.showErrors = true;
+        this.showCorrect = true;
+        break;
+      default:
+        this.showErrors = false;
+        this.showCorrect = true;
+    }
   }
 
   ngAfterViewInit() {
@@ -84,7 +100,7 @@ export class GradesComponent {
         nterm: this.standardization == "nterm" ? this.nterm : null,
         passGrade: this.standardization != "nterm" ? this.passGrade : null,
         passScoreGoal: this.standardization != "nterm" ? this.passScoreGoal : null,
-        showCorrect: this.showCorrect ? null : "no"     
+        show: this.showErrors ? (this.showCorrect ? "both" : "errors") : null     
       },
       replaceUrl: true      
     });

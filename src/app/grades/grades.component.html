@@ -1,6 +1,6 @@
 
 <h1>Cijfers berekenen</h1>
-<form id="inputForm">
+<form id="inputForm" class="d-print-none">
 <div class="row">
   <div class="col-md-4">
     <div class="row mb-3">
@@ -46,17 +46,28 @@
   </div>
   <div class="col-md-4">
     <div class="row mb-3">
-        <label class="col-6 col-form-label" for="showCorrect">Toon</label>
+        <label class="col-6 col-form-label">Toon</label>
         <div class="col-6">
-            <select class="form-select" id="showCorrect" name="showCorrect" [(ngModel)]="showCorrect">
-                <option [ngValue]="true">#Goed</option>
-                <option [ngValue]="false">#Fout</option>
-            </select>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="showCorrect" name="showCorrect" [(ngModel)]="showCorrect" [disabled]="!showErrors" />
+                <label class="form-check-label" for="showCorrect">#Goed</label>
+            </div>
+                
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="showErrors" name="showErrors" [(ngModel)]="showErrors" [disabled]="!showCorrect" />
+                <label class="form-check-label" for="showErrors">#Fout</label>
+            </div>
         </div>
     </div>
   </div>
 </div>
 </form>
+
+<p class="d-none d-print-block">
+    Aantal punten: {{maxScore}}, 
+    @if (standardization == "nterm") { N-Term: {{nterm | number: '1.1-1'}} }
+    @else { voldoende: {{passGrade | number: '1.1-1'}}, percentage voor voldoende: {{passScoreGoal}}% }
+</p>
 
 
 @if (isLoading$ | async) {
@@ -72,17 +83,17 @@
 <div class="row" [class.opacity-25]="isLoading$ | async">
 @for(gradeList of grades$ | async; track gradeList) {
     <div class="col-6 col-sm-3 col-md-2">
-        <table class="table table-sm table-hover">
+        <table class="table table-sm table-hover" style="table-layout: fixed;">
         <thead>
             @if(showCorrect) { <th class="text-end">#Goed</th> }
-            @else { <th class="text-end">#Fout</th> }
+            @if(showErrors) { <th class="text-end">#Fout</th> }
             <th>Cijfer</th>
         </thead>
         <tbody>
         @for(grade of gradeList; track grade) {
             <tr [class.fw-bold]="showCorrect ? grade.score % 10 == 0 : grade.errors % 10 == 0">
             @if(showCorrect) {  <td class="text-end">{{grade.score}}</td> }
-            @else { <td class="text-end">{{grade.errors}}</td> }
+            @if(showErrors) { <td class="text-end">{{grade.errors}}</td> }
             <td>{{grade.grade | number: '1.1-1' }}</td>
             </tr>
         }
