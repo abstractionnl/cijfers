@@ -58,17 +58,18 @@
 </div>
 </form>
 
-<div class="row">
+
 @if (isLoading$ | async) {
-    <div class="col-md-8 d-flex justify-content-center">
-        <div class="spinner-border" role="status">
-            <span class="visually-hidden">Loading...</span>
+    <div class="position-absolute container">
+        <div class="col-md-8 d-flex justify-content-center m-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
         </div>
     </div>
 }
-</div>
 
-<div class="row">
+<div class="row" [class.opacity-25]="isLoading$ | async">
 @for(gradeList of grades$ | async; track gradeList) {
     <div class="col-6 col-sm-3 col-md-2">
         <table class="table table-sm table-hover">
