@@ -2,7 +2,7 @@
 <h1>Cijfers berekenen</h1>
 <form id="inputForm" class="d-print-none">
 <div class="row">
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="row mb-3">
         <label class="col-6 col-form-label" for="maxScore">Maximaal aantal punten</label>
         <div class="col-6">
@@ -44,7 +44,7 @@
         </div>
     }
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="row mb-3">
         <label class="col-6 col-form-label">Toon</label>
         <div class="col-6">
@@ -71,8 +71,8 @@
 
 
 @if (isLoading$ | async) {
-    <div class="position-absolute container">
-        <div class="col-md-8 d-flex justify-content-center m-5">
+    <div class="position-absolute" style="left: 0; right: 0;">
+        <div class="d-flex justify-content-center m-5">
             <div class="spinner-border" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
@@ -82,7 +82,7 @@
 
 <div class="row" [class.opacity-25]="isLoading$ | async">
 @for(gradeList of grades$ | async; track gradeList) {
-    <div class="col-6 col-sm-3 col-md-2">
+    <div class="col-6 col-sm-3">
         <table class="table table-sm table-hover" style="table-layout: fixed;">
         <thead>
             @if(showCorrect) { <th class="text-end">#Goed</th> }
