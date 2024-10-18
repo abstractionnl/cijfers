@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, ActivatedRoute, Router } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ValueChangeEvent } from '@angular/forms';
 import { BehaviorSubject, Observable, pipe, Subject } from 'rxjs';
 import { debounceTime, tap, map } from 'rxjs/operators';
 import { IGradeCalculator, GradeCalculator, NTermCalculator } from '../gradecalculator';
@@ -22,6 +22,7 @@ export class GradesComponent {
   passScoreGoal = 60;
   showCorrect = true;
   showErrors = false;
+  halves = false;
 
   private settings$ = new Subject<GradeSettings>();
   grades$: Observable<Grade[][]>;
@@ -57,6 +58,10 @@ export class GradesComponent {
     if (!isNaN(passScoreGoal))
       this.nterm = passScoreGoal;
 
+    var halves = this.activatedRoute.snapshot.queryParamMap.get("halves") ?? "";
+    if (halves)
+      this.halves = true;
+
     var show = this.activatedRoute.snapshot.queryParamMap.get("show");
     switch (show) {
       case "errors":
@@ -79,7 +84,8 @@ export class GradesComponent {
       maxScore: this.maxScore,
       nterm: this.nterm,
       passGrade: this.passGrade,
-      passScoreGoal: this.passScoreGoal
+      passScoreGoal: this.passScoreGoal,
+      step: this.halves ? 0.5 : 1
     });
   }
 
@@ -89,7 +95,8 @@ export class GradesComponent {
       maxScore: this.maxScore,
       nterm: this.nterm,
       passGrade: this.passGrade,
-      passScoreGoal: this.passScoreGoal
+      passScoreGoal: this.passScoreGoal,
+      step: this.halves ? 0.5 : 1
     });
 
     this.router.navigate([], {
@@ -100,7 +107,8 @@ export class GradesComponent {
         nterm: this.standardization == "nterm" ? this.nterm : null,
         passGrade: this.standardization != "nterm" ? this.passGrade : null,
         passScoreGoal: this.standardization != "nterm" ? this.passScoreGoal : null,
-        show: this.showErrors ? (this.showCorrect ? "both" : "errors") : null     
+        show: this.showErrors ? (this.showCorrect ? "both" : "errors") : null,
+        halves: this.halves ? this.halves : null
       },
       replaceUrl: true      
     });
@@ -120,15 +128,15 @@ export class GradesComponent {
   private static calculateGrades(settings: GradeSettings): Grade[] {
     var calculator = GradesComponent.getCalculator(settings);
     
-    var s = [... Array(settings.maxScore+1).keys()]
-      .reverse()
-      .map((i: number) => {
-        return { 
-          score: i, 
-          errors: settings.maxScore - i,
-          grade: calculator.getGrade(i)
-        }
-    });
+    var s = [];
+
+    for (var i = settings.maxScore; i >= 0; i -= settings.step) {
+      s.push({ 
+        score: i, 
+        errors: settings.maxScore - i,
+        grade: calculator.getGrade(i)
+      })
+    };
 
     return s;
   }
@@ -163,4 +171,5 @@ type GradeSettings = {
   nterm: number;
   passGrade: number;
   passScoreGoal: number;
+  step: number;
 }
