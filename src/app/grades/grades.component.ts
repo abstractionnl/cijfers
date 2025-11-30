@@ -23,6 +23,7 @@ export class GradesComponent {
   showCorrect = true;
   showErrors = false;
   halves = false;
+  showColors = false;
   copyButtonText = "Kopieer naar klembord";
 
   private settings$ = new Subject<GradeSettings>();
@@ -244,8 +245,8 @@ export class GradesComponent {
     html += '<tr>';
     for (let col = 0; col < 4; col++) {
       if (col > 0) html += `<th style="${separatorStyle}"></th>`; // separator
-      if (this.showCorrect) html += `<th style="${cellStyleRight}" align="right">#Goed</th>`;
-      if (this.showErrors) html += `<th style="${cellStyleRight}" align="right">#Fout</th>`;
+      if (this.showCorrect) html += `<th style="${cellStyleRight}" align="right">Punten</th>`;
+      if (this.showErrors) html += `<th style="${cellStyleRight}" align="right">Fouten</th>`;
       html += `<th style="${cellStyleLeft}" align="left">Cijfer</th>`;
     }
     html += '</tr>';
@@ -260,9 +261,10 @@ export class GradesComponent {
           const isBold = this.showCorrect ? grade.score % 10 === 0 : grade.errors % 10 === 0;
           const boldStart = isBold ? '<b>' : '';
           const boldEnd = isBold ? '</b>' : '';
+          const gradeColor = this.showColors ? (grade.grade >= 5.5 ? 'color:#198754;' : 'color:#dc3545;') : '';
           if (this.showCorrect) html += `<td style="${cellStyleRight}" align="right">${boldStart}${grade.score}${boldEnd}</td>`;
           if (this.showErrors) html += `<td style="${cellStyleRight}" align="right">${boldStart}${grade.errors}${boldEnd}</td>`;
-          html += `<td style="${cellStyleLeft}" align="left">${boldStart}${this.formatGrade(grade.grade)}${boldEnd}</td>`;
+          html += `<td style="${cellStyleLeft}${gradeColor}" align="left">${boldStart}${this.formatGrade(grade.grade)}${boldEnd}</td>`;
         } else {
           // Empty cells for uneven columns
           if (this.showCorrect) html += '<td></td>';
@@ -304,8 +306,8 @@ export class GradesComponent {
     let header: string[] = [];
     for (let col = 0; col < 4; col++) {
       if (col > 0) header.push('  '); // separator between column groups
-      if (this.showCorrect) header.push(padLeft('#Goed', scoreWidth));
-      if (this.showErrors) header.push(padLeft('#Fout', errorWidth));
+      if (this.showCorrect) header.push(padLeft('Punten', scoreWidth));
+      if (this.showErrors) header.push(padLeft('Fouten', errorWidth));
       header.push(padRight('Cijfer', gradeWidth));
     }
     lines.push(header.join(' '));
