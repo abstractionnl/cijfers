@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, ActivatedRoute, Router } from '@angular/router';
 import { FormsModule, ValueChangeEvent } from '@angular/forms';
-import { BehaviorSubject, Observable, pipe, Subject } from 'rxjs';
-import { debounceTime, tap, map } from 'rxjs/operators';
+import { BehaviorSubject, Observable, Subject } from 'rxjs';
+import { debounceTime, tap, map, shareReplay, filter } from 'rxjs/operators';
 import { IGradeCalculator, GradeCalculator, NTermCalculator } from '../gradecalculator';
 
 @Component({
@@ -15,31 +15,48 @@ import { IGradeCalculator, GradeCalculator, NTermCalculator } from '../gradecalc
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GradesComponent {
-  maxScore = 50;
+  maxScore = 20;
   standardization = "nterm";
   nterm = 1;
+  ntermMin = 0.0;
+  ntermMax = 1.0;
   passGrade = 6;
   passScoreGoal = 60;
   showCorrect = true;
   showErrors = false;
   halves = false;
-  showColors = false;
+  showColors = true;
   copyButtonText = "Kopieer naar klembord";
 
   private settings$ = new Subject<GradeSettings>();
   grades$: Observable<Grade[][]>;
+  ntermTable$: Observable<NTermTableData>;
   private flatGrades: Grade[] = [];
+  private ntermTableData: NTermTableData | null = null;
   private _isLoading = new BehaviorSubject(false);
   isLoading$ = this._isLoading.asObservable();
 
   constructor(private router: Router, private activatedRoute: ActivatedRoute, private cdr: ChangeDetectorRef) {
-    this.grades$ = this.settings$.pipe(
-      tap(x => { this._isLoading.next(true) }),
+    // Shared settings stream with debounce
+    const debouncedSettings$ = this.settings$.pipe(
+      tap(() => { this._isLoading.next(true) }),
       debounceTime(500),
+      shareReplay(1)
+    );
+
+    this.grades$ = debouncedSettings$.pipe(
+      filter(s => s.standardization !== 'ntermtable'),
       map(GradesComponent.calculateGrades),
       tap(grades => { this.flatGrades = grades; }),
       map(g => GradesComponent.sliceArray(g, 4)),
-      tap(x => { this._isLoading.next(false); }),
+      tap(() => { this._isLoading.next(false); }),
+    );
+
+    this.ntermTable$ = debouncedSettings$.pipe(
+      filter(s => s.standardization === 'ntermtable'),
+      map(GradesComponent.calculateNTermTable),
+      tap(data => { this.ntermTableData = data; }),
+      tap(() => { this._isLoading.next(false); }),
     );
   }
 
@@ -54,13 +71,21 @@ export class GradesComponent {
     if (!isNaN(nterm))
       this.nterm = nterm;
 
+    var ntermMin = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("ntermMin") ?? "");
+    if (!isNaN(ntermMin))
+      this.ntermMin = ntermMin;
+
+    var ntermMax = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("ntermMax") ?? "");
+    if (!isNaN(ntermMax))
+      this.ntermMax = ntermMax;
+
     var passGrade = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("passGrade") ?? "");
     if (!isNaN(passGrade))
-      this.nterm = passGrade;
+      this.passGrade = passGrade;
 
     var passScoreGoal = parseFloat(this.activatedRoute.snapshot.queryParamMap.get("passScoreGoal") ?? "");
     if (!isNaN(passScoreGoal))
-      this.nterm = passScoreGoal;
+      this.passScoreGoal = passScoreGoal;
 
     var halves = this.activatedRoute.snapshot.queryParamMap.get("halves") ?? "";
     if (halves)
@@ -80,6 +105,10 @@ export class GradesComponent {
         this.showErrors = false;
         this.showCorrect = true;
     }
+
+    var colors = this.activatedRoute.snapshot.queryParamMap.get("colors");
+    if (colors === "false")
+      this.showColors = false;
   }
 
   ngAfterViewInit() {
@@ -87,6 +116,8 @@ export class GradesComponent {
       standardization: this.standardization,
       maxScore: this.maxScore,
       nterm: this.nterm,
+      ntermMin: this.ntermMin,
+      ntermMax: this.ntermMax,
       passGrade: this.passGrade,
       passScoreGoal: this.passScoreGoal,
       step: this.halves ? 0.5 : 1
@@ -98,6 +129,8 @@ export class GradesComponent {
       standardization: this.standardization,
       maxScore: this.maxScore,
       nterm: this.nterm,
+      ntermMin: this.ntermMin,
+      ntermMax: this.ntermMax,
       passGrade: this.passGrade,
       passScoreGoal: this.passScoreGoal,
       step: this.halves ? 0.5 : 1
@@ -109,12 +142,15 @@ export class GradesComponent {
         standardization: this.standardization,
         maxScore: this.maxScore,
         nterm: this.standardization == "nterm" ? this.nterm : null,
-        passGrade: this.standardization != "nterm" ? this.passGrade : null,
-        passScoreGoal: this.standardization != "nterm" ? this.passScoreGoal : null,
+        ntermMin: this.standardization == "ntermtable" ? this.ntermMin : null,
+        ntermMax: this.standardization == "ntermtable" ? this.ntermMax : null,
+        passGrade: this.standardization == "linear" || this.standardization == "nonlinear" ? this.passGrade : null,
+        passScoreGoal: this.standardization == "linear" || this.standardization == "nonlinear" ? this.passScoreGoal : null,
         show: this.showErrors ? (this.showCorrect ? "both" : "errors") : null,
-        halves: this.halves ? this.halves : null
+        halves: this.halves ? this.halves : null,
+        colors: this.showColors ? null : "false"
       },
-      replaceUrl: true      
+      replaceUrl: true
     });
   }
 
@@ -131,18 +167,39 @@ export class GradesComponent {
 
   private static calculateGrades(settings: GradeSettings): Grade[] {
     var calculator = GradesComponent.getCalculator(settings);
-    
+
     var s = [];
 
     for (var i = settings.maxScore; i >= 0; i -= settings.step) {
-      s.push({ 
-        score: i, 
+      s.push({
+        score: i,
         errors: settings.maxScore - i,
         grade: calculator.getGrade(i)
       })
     };
 
     return s;
+  }
+
+  private static calculateNTermTable(settings: GradeSettings): NTermTableData {
+    // Generate array of n-terms from min to max with step 0.1
+    const nterms: number[] = [];
+    for (let n = settings.ntermMin; n <= settings.ntermMax + 0.001; n += 0.1) {
+      nterms.push(Math.round(n * 10) / 10); // Round to 1 decimal to avoid floating point issues
+    }
+
+    // Generate rows for each score
+    const rows: NTermTableRow[] = [];
+    for (let score = settings.maxScore; score >= 0; score -= settings.step) {
+      const grades: number[] = [];
+      for (const nterm of nterms) {
+        const calculator = new NTermCalculator(settings.maxScore, nterm);
+        grades.push(calculator.getGrade(score));
+      }
+      rows.push({ score, grades });
+    }
+
+    return { nterms, rows };
   }
 
   private static sliceArray(grades: Grade[], cols: number): Grade[][] {
@@ -163,13 +220,20 @@ export class GradesComponent {
   }
 
   async copyToClipboard() {
-    if (this.flatGrades.length === 0) {
-      console.warn('No grades to copy');
-      return;
+    if (this.standardization === 'ntermtable') {
+      if (!this.ntermTableData) {
+        console.warn('No n-term table to copy');
+        return;
+      }
+    } else {
+      if (this.flatGrades.length === 0) {
+        console.warn('No grades to copy');
+        return;
+      }
     }
 
-    const html = this.generateHtmlTable();
-    const plainText = this.generatePlainText();
+    const html = this.standardization === 'ntermtable' ? this.generateNTermHtmlTable() : this.generateHtmlTable();
+    const plainText = this.standardization === 'ntermtable' ? this.generateNTermPlainText() : this.generatePlainText();
 
     try {
       // Use modern Clipboard API with explicit MIME types
@@ -337,6 +401,82 @@ export class GradesComponent {
   private formatGrade(grade: number): string {
     return grade.toFixed(1).replace('.', ',');
   }
+
+  private generateNTermHtmlTable(): string {
+    if (!this.ntermTableData) return '';
+
+    const borderStyle = 'border-bottom:1px solid #dee2e6;';
+    const cellStyleRight = `${borderStyle}padding:4px 8px;text-align:right;`;
+
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+      <head><style>td,th{mso-number-format:"\\@";}</style></head><body>`;
+
+    // Add summary
+    html += '<p>';
+    html += `Aantal punten: ${this.maxScore}, N-Term: ${this.formatGrade(this.ntermMin)} - ${this.formatGrade(this.ntermMax)}`;
+    html += '</p>';
+    html += '<table style="border-collapse:collapse;">';
+
+    // Header row
+    html += '<tr>';
+    html += `<th style="${cellStyleRight}" align="right">Punten</th>`;
+    for (const nterm of this.ntermTableData.nterms) {
+      html += `<th style="${cellStyleRight}" align="right">${this.formatGrade(nterm)}</th>`;
+    }
+    html += '</tr>';
+
+    // Data rows
+    for (const row of this.ntermTableData.rows) {
+      const isBold = row.score % 10 === 0;
+      const boldStart = isBold ? '<b>' : '';
+      const boldEnd = isBold ? '</b>' : '';
+      html += '<tr>';
+      html += `<td style="${cellStyleRight}" align="right">${boldStart}${row.score}${boldEnd}</td>`;
+      for (const grade of row.grades) {
+        const gradeColor = this.showColors ? (grade >= 5.5 ? 'color:#198754;' : 'color:#dc3545;') : '';
+        html += `<td style="${cellStyleRight}${gradeColor}" align="right">${boldStart}${this.formatGrade(grade)}${boldEnd}</td>`;
+      }
+      html += '</tr>';
+    }
+
+    html += '</table></body></html>';
+    return html;
+  }
+
+  private generateNTermPlainText(): string {
+    if (!this.ntermTableData) return '';
+
+    let lines: string[] = [];
+
+    // Add summary
+    lines.push(`Aantal punten: ${this.maxScore}, N-Term: ${this.formatGrade(this.ntermMin)} - ${this.formatGrade(this.ntermMax)}`);
+    lines.push('');
+
+    const scoreWidth = Math.max(6, this.maxScore.toString().length);
+    const gradeWidth = 5;
+
+    const padLeft = (str: string, width: number) => str.padStart(width);
+
+    // Header row
+    let header: string[] = [];
+    header.push(padLeft('Punten', scoreWidth));
+    for (const nterm of this.ntermTableData.nterms) {
+      header.push(padLeft(this.formatGrade(nterm), gradeWidth));
+    }
+    lines.push(header.join(' '));
+
+    // Data rows
+    for (const row of this.ntermTableData.rows) {
+      let rowData: string[] = [];
+      rowData.push(padLeft(row.score.toString(), scoreWidth));
+      for (const grade of row.grades) {
+        rowData.push(padLeft(this.formatGrade(grade), gradeWidth));
+      }
+      lines.push(rowData.join(' '));
+    }
+
+    return lines.join('\n');
+  }
 }
 
 type Grade = {
@@ -349,7 +489,19 @@ type GradeSettings = {
   maxScore: number;
   standardization: string;
   nterm: number;
+  ntermMin: number;
+  ntermMax: number;
   passGrade: number;
   passScoreGoal: number;
   step: number;
+}
+
+type NTermTableData = {
+  nterms: number[];
+  rows: NTermTableRow[];
+}
+
+type NTermTableRow = {
+  score: number;
+  grades: number[];
 }

@@ -16,15 +16,30 @@
                 <option value="linear">Linear</option>
                 <option value="nonlinear">Niet linear</option>
                 <option value="nterm">N-Term</option>
+                <option value="ntermtable">N-Term tabel</option>
             </select>
         </div>
-    </div> 
+    </div>
 
     @if (standardization == "nterm") {
         <div class="row mb-3">
             <label class="col-6 col-form-label" for="nterm">N-Term</label>
             <div class="col-6">
                 <input type="number" required class="form-control" id="nterm" name="nterm" [(ngModel)]="nterm" [step]="0.1" (change)="onChanges()">
+            </div>
+        </div>
+    }
+    @else if (standardization == "ntermtable") {
+        <div class="row mb-3">
+            <label class="col-6 col-form-label" for="ntermMin">N-Term minimum</label>
+            <div class="col-6">
+                <input type="number" required class="form-control" id="ntermMin" name="ntermMin" [(ngModel)]="ntermMin" [step]="0.1" (change)="onChanges()">
+            </div>
+        </div>
+        <div class="row mb-3">
+            <label class="col-6 col-form-label" for="ntermMax">N-Term maximum</label>
+            <div class="col-6">
+                <input type="number" required class="form-control" id="ntermMax" name="ntermMax" [(ngModel)]="ntermMax" [step]="0.1" (change)="onChanges()">
             </div>
         </div>
     }
@@ -97,6 +112,7 @@
     </div>
 }
 
+@if (standardization != "ntermtable") {
 <div class="row" [class.opacity-25]="isLoading$ | async">
 @for(gradeList of grades$ | async; track gradeList) {
     <div class="col-6 col-sm-3">
@@ -118,6 +134,34 @@
         </table>
     </div>
 }
-
-
 </div>
+}
+
+@if (standardization == "ntermtable") {
+<div [class.opacity-25]="isLoading$ | async">
+    @if (ntermTable$ | async; as ntermTable) {
+    <div class="table-responsive">
+        <table class="table table-sm table-hover" style="width: auto;">
+        <thead>
+            <tr>
+                <th class="text-end">Punten</th>
+                @for(nterm of ntermTable.nterms; track nterm) {
+                    <th class="text-end">{{nterm | number: '1.1-1'}}</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @for(row of ntermTable.rows; track row.score) {
+                <tr [class.fw-bold]="row.score % 10 == 0">
+                    <td class="text-end">{{row.score}}</td>
+                    @for(grade of row.grades; track $index) {
+                        <td class="text-end" [class.text-success]="showColors && grade >= 5.5" [class.text-danger]="showColors && grade < 5.5">{{grade | number: '1.1-1'}}</td>
+                    }
+                </tr>
+            }
+        </tbody>
+        </table>
+    </div>
+    }
+</div>
+}
