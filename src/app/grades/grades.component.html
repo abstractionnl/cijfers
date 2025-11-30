@@ -52,16 +52,23 @@
                 <input class="form-check-input" type="checkbox" role="switch" id="showCorrect" name="showCorrect" [(ngModel)]="showCorrect" [disabled]="!showErrors" />
                 <label class="form-check-label" for="showCorrect">#Goed</label>
             </div>
-                
+
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" role="switch" id="showErrors" name="showErrors" [(ngModel)]="showErrors" [disabled]="!showCorrect" />
                 <label class="form-check-label" for="showErrors">#Fout</label>
             </div>
-                
+
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" role="switch" id="step" name="step" [(ngModel)]="halves"  (change)="onChanges()" />
                 <label class="form-check-label" for="step">Halve punten</label>
             </div>
+        </div>
+    </div>
+    <div class="row mb-3">
+        <div class="col-6 offset-6">
+            <button type="button" class="btn btn-outline-primary btn-sm" (click)="copyToClipboard()">
+                {{copyButtonText}}
+            </button>
         </div>
     </div>
   </div>

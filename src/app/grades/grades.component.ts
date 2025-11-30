@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, ActivatedRoute, Router } from '@angular/router';
 import { FormsModule, ValueChangeEvent } from '@angular/forms';
@@ -23,17 +23,20 @@ export class GradesComponent {
   showCorrect = true;
   showErrors = false;
   halves = false;
+  copyButtonText = "Kopieer naar klembord";
 
   private settings$ = new Subject<GradeSettings>();
   grades$: Observable<Grade[][]>;
+  private flatGrades: Grade[] = [];
   private _isLoading = new BehaviorSubject(false);
   isLoading$ = this._isLoading.asObservable();
 
-  constructor(private router: Router, private activatedRoute: ActivatedRoute) {
+  constructor(private router: Router, private activatedRoute: ActivatedRoute, private cdr: ChangeDetectorRef) {
     this.grades$ = this.settings$.pipe(
       tap(x => { this._isLoading.next(true) }),
       debounceTime(500),
       map(GradesComponent.calculateGrades),
+      tap(grades => { this.flatGrades = grades; }),
       map(g => GradesComponent.sliceArray(g, 4)),
       tap(x => { this._isLoading.next(false); }),
     );
@@ -154,8 +157,183 @@ export class GradesComponent {
 
       resultArray[chunkIndex].push(grades[i]);
     }
-    
+
     return resultArray;;
+  }
+
+  async copyToClipboard() {
+    if (this.flatGrades.length === 0) {
+      console.warn('No grades to copy');
+      return;
+    }
+
+    const html = this.generateHtmlTable();
+    const plainText = this.generatePlainText();
+
+    try {
+      // Use modern Clipboard API with explicit MIME types
+      const htmlBlob = new Blob([html], { type: 'text/html' });
+      const textBlob = new Blob([plainText], { type: 'text/plain' });
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': htmlBlob,
+          'text/plain': textBlob
+        })
+      ]);
+      this.copyButtonText = "Gekopieerd!";
+      this.cdr.markForCheck();
+    } catch (err) {
+      console.error('Clipboard API failed, trying fallback:', err);
+      // Fallback using execCommand
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      document.body.appendChild(container);
+
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(container);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+
+      try {
+        document.execCommand('copy');
+        this.copyButtonText = "Gekopieerd!";
+      } catch (err2) {
+        console.error('Copy failed:', err2);
+        await navigator.clipboard.writeText(plainText);
+        this.copyButtonText = "Gekopieerd!";
+      }
+
+      selection?.removeAllRanges();
+      document.body.removeChild(container);
+    }
+
+    setTimeout(() => {
+      this.copyButtonText = "Kopieer naar klembord";
+      this.cdr.markForCheck();
+    }, 5000);
+  }
+
+  private generateHtmlTable(): string {
+    const columns = GradesComponent.sliceArray(this.flatGrades, 4);
+    const maxRows = Math.max(...columns.map(c => c.length));
+    const borderStyle = 'border-bottom:1px solid #dee2e6;';
+    const cellStyleRight = `${borderStyle}padding:4px 8px;text-align:right;`;
+    const cellStyleLeft = `${borderStyle}padding:4px 8px;text-align:left;`;
+    const separatorStyle = 'width:16px;';
+
+    // Use Word-compatible HTML with proper namespace
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+      <head><style>td,th{mso-number-format:"\\@";}</style></head><body>`;
+
+    // Add summary
+    html += '<p>';
+    html += `Aantal punten: ${this.maxScore}, `;
+    if (this.standardization === 'nterm') {
+      html += `N-Term: ${this.formatGrade(this.nterm)}`;
+    } else {
+      html += `voldoende: ${this.formatGrade(this.passGrade)}, percentage voor voldoende: ${this.passScoreGoal}%`;
+    }
+    html += '</p>';
+    html += '<table style="border-collapse:collapse;">';
+
+    // Header row - repeat for each column
+    html += '<tr>';
+    for (let col = 0; col < 4; col++) {
+      if (col > 0) html += `<th style="${separatorStyle}"></th>`; // separator
+      if (this.showCorrect) html += `<th style="${cellStyleRight}" align="right">#Goed</th>`;
+      if (this.showErrors) html += `<th style="${cellStyleRight}" align="right">#Fout</th>`;
+      html += `<th style="${cellStyleLeft}" align="left">Cijfer</th>`;
+    }
+    html += '</tr>';
+
+    // Data rows
+    for (let row = 0; row < maxRows; row++) {
+      html += '<tr>';
+      for (let col = 0; col < 4; col++) {
+        if (col > 0) html += `<td style="${separatorStyle}"></td>`; // separator
+        const grade = columns[col]?.[row];
+        if (grade) {
+          const isBold = this.showCorrect ? grade.score % 10 === 0 : grade.errors % 10 === 0;
+          const boldStart = isBold ? '<b>' : '';
+          const boldEnd = isBold ? '</b>' : '';
+          if (this.showCorrect) html += `<td style="${cellStyleRight}" align="right">${boldStart}${grade.score}${boldEnd}</td>`;
+          if (this.showErrors) html += `<td style="${cellStyleRight}" align="right">${boldStart}${grade.errors}${boldEnd}</td>`;
+          html += `<td style="${cellStyleLeft}" align="left">${boldStart}${this.formatGrade(grade.grade)}${boldEnd}</td>`;
+        } else {
+          // Empty cells for uneven columns
+          if (this.showCorrect) html += '<td></td>';
+          if (this.showErrors) html += '<td></td>';
+          html += '<td></td>';
+        }
+      }
+      html += '</tr>';
+    }
+
+    html += '</table></body></html>';
+    return html;
+  }
+
+  private generatePlainText(): string {
+    const columns = GradesComponent.sliceArray(this.flatGrades, 4);
+    const maxRows = Math.max(...columns.map(c => c.length));
+    let lines: string[] = [];
+
+    // Add summary
+    let summary = `Aantal punten: ${this.maxScore}, `;
+    if (this.standardization === 'nterm') {
+      summary += `N-Term: ${this.formatGrade(this.nterm)}`;
+    } else {
+      summary += `voldoende: ${this.formatGrade(this.passGrade)}, percentage voor voldoende: ${this.passScoreGoal}%`;
+    }
+    lines.push(summary);
+    lines.push(''); // empty line before table
+
+    // Calculate column widths
+    const scoreWidth = Math.max(5, this.maxScore.toString().length); // min 5 for "#Goed"
+    const errorWidth = Math.max(5, this.maxScore.toString().length); // min 5 for "#Fout"
+    const gradeWidth = 6; // "Cijfer" or "10,0"
+
+    const padLeft = (str: string, width: number) => str.padStart(width);
+    const padRight = (str: string, width: number) => str.padEnd(width);
+
+    // Header row - repeat for each column
+    let header: string[] = [];
+    for (let col = 0; col < 4; col++) {
+      if (col > 0) header.push('  '); // separator between column groups
+      if (this.showCorrect) header.push(padLeft('#Goed', scoreWidth));
+      if (this.showErrors) header.push(padLeft('#Fout', errorWidth));
+      header.push(padRight('Cijfer', gradeWidth));
+    }
+    lines.push(header.join(' '));
+
+    // Data rows
+    for (let row = 0; row < maxRows; row++) {
+      let rowData: string[] = [];
+      for (let col = 0; col < 4; col++) {
+        if (col > 0) rowData.push('  '); // separator between column groups
+        const grade = columns[col]?.[row];
+        if (grade) {
+          if (this.showCorrect) rowData.push(padLeft(grade.score.toString(), scoreWidth));
+          if (this.showErrors) rowData.push(padLeft(grade.errors.toString(), errorWidth));
+          rowData.push(padRight(this.formatGrade(grade.grade), gradeWidth));
+        } else {
+          if (this.showCorrect) rowData.push(padLeft('', scoreWidth));
+          if (this.showErrors) rowData.push(padLeft('', errorWidth));
+          rowData.push(padRight('', gradeWidth));
+        }
+      }
+      lines.push(rowData.join(' '));
+    }
+
+    return lines.join('\n');
+  }
+
+  private formatGrade(grade: number): string {
+    return grade.toFixed(1).replace('.', ',');
   }
 }
 
